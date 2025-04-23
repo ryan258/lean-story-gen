@@ -10,6 +10,16 @@ const copyStoryBtn = document.getElementById('copyStoryBtn');
 const body = document.getElementById('main-body');
 const defaultBg = body.className;
 const loadingBg = 'bg-yellow-200 dark:bg-yellow-900 min-h-screen flex flex-col items-center py-12';
+const aiProviderSelect = document.getElementById('ai-provider');
+const openaiModelInput = document.getElementById('openai-model');
+
+aiProviderSelect.onchange = function() {
+    if (aiProviderSelect.value === 'openai') {
+        openaiModelInput.style.display = '';
+    } else {
+        openaiModelInput.style.display = 'none';
+    }
+};
 
 function setLoadingBg(isLoading) {
     if (isLoading) {
@@ -17,6 +27,15 @@ function setLoadingBg(isLoading) {
     } else {
         document.body.classList.remove('loading');
     }
+}
+
+function getProviderAndModel() {
+    const provider = aiProviderSelect.value;
+    let model = '';
+    if (provider === 'openai') {
+        model = openaiModelInput.value.trim();
+    }
+    return { provider, model };
 }
 
 let currentStory = '';
@@ -27,10 +46,11 @@ generateBtn.onclick = async () => {
     if (!prompt) return;
     generateBtn.disabled = true;
     setLoadingBg(true);
+    const { provider, model } = getProviderAndModel();
     const res = await fetch('/generate-story', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt })
+        body: JSON.stringify({ prompt, provider, model })
     });
     setLoadingBg(false);
     const data = await res.json();
@@ -46,10 +66,11 @@ generateBtn.onclick = async () => {
 focusGroupBtn.onclick = async () => {
     focusGroupBtn.disabled = true;
     setLoadingBg(true);
+    const { provider, model } = getProviderAndModel();
     const res = await fetch('/focus-group', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ story: currentStory })
+        body: JSON.stringify({ story: currentStory, provider, model })
     });
     setLoadingBg(false);
     const data = await res.json();
@@ -63,10 +84,11 @@ focusGroupBtn.onclick = async () => {
 enhanceBtn.onclick = async () => {
     enhanceBtn.disabled = true;
     setLoadingBg(true);
+    const { provider, model } = getProviderAndModel();
     const res = await fetch('/enhance-story', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ story: currentStory, feedback: currentFeedback })
+        body: JSON.stringify({ story: currentStory, feedback: currentFeedback, provider, model })
     });
     setLoadingBg(false);
     const data = await res.json();
