@@ -6,6 +6,7 @@ const focusGroupBtn = document.getElementById('focusGroupBtn');
 const feedbackSection = document.getElementById('feedback-section');
 const feedbackDiv = document.getElementById('feedback');
 const enhanceBtn = document.getElementById('enhanceBtn');
+const copyStoryBtn = document.getElementById('copyStoryBtn');
 
 let currentStory = '';
 let currentFeedback = '';
@@ -24,6 +25,7 @@ generateBtn.onclick = async () => {
     storyDiv.textContent = currentStory;
     storySection.style.display = 'block';
     focusGroupBtn.style.display = 'inline-block';
+    copyStoryBtn.style.display = 'inline-block';
     feedbackSection.style.display = 'none';
     generateBtn.disabled = false;
 };
@@ -55,5 +57,22 @@ enhanceBtn.onclick = async () => {
     storyDiv.textContent = currentStory;
     feedbackSection.style.display = 'none';
     focusGroupBtn.style.display = 'inline-block';
+    copyStoryBtn.style.display = 'inline-block';
     enhanceBtn.disabled = false;
+};
+
+copyStoryBtn.onclick = async () => {
+    if (!currentStory) return;
+    try {
+        await navigator.clipboard.writeText(currentStory);
+        copyStoryBtn.textContent = 'Copied!';
+        setTimeout(() => {
+            copyStoryBtn.textContent = 'Copy Story';
+        }, 1500);
+    } catch (e) {
+        copyStoryBtn.textContent = 'Failed to Copy';
+        setTimeout(() => {
+            copyStoryBtn.textContent = 'Copy Story';
+        }, 1500);
+    }
 };
