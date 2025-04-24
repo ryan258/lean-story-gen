@@ -7,6 +7,7 @@ const feedbackSection = document.getElementById('feedback-section');
 const feedbackDiv = document.getElementById('feedback');
 const enhanceBtn = document.getElementById('enhanceBtn');
 const copyStoryBtn = document.getElementById('copyStoryBtn');
+const runChainBtn = document.getElementById('runChainBtn');
 const body = document.getElementById('main-body');
 const defaultBg = body.className;
 const loadingBg = 'bg-yellow-200 dark:bg-yellow-900 min-h-screen flex flex-col items-center py-12';
@@ -57,6 +58,44 @@ function hideProducerNotesField() {
     producerNotesInput.value = '';
 }
 
+function renderMarkdownToHtml(md) {
+    if (!md || typeof md !== 'string') return '';
+    // Basic markdown formatting for feedback (bold, lists, line breaks, rating)
+    let html = md
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // bold
+        .replace(/\n\n/g, '<br><br>') // paragraph breaks
+        .replace(/\n- /g, '<br>&bull; ') // bullet points
+        .replace(/\n\d+\. /g, m => '<br>' + m.trim()) // numbered list
+        .replace(/\n/g, '<br>'); // line breaks
+    // Highlight the rating line
+    html = html.replace(/RATING: (\d{1,2}\/10 stars)/i, '<span class="font-bold text-yellow-500">RATING: $1</span>');
+    return html;
+}
+
+function renderStoryMarkdownToHtml(md) {
+    if (!md || typeof md !== 'string') return '';
+    // Basic markdown formatting for stories (bold, italics, line breaks, lists)
+    let html = md
+        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // bold
+        .replace(/\*(.*?)\*/g, '<em>$1</em>') // italics
+        .replace(/\n\n/g, '<br><br>') // paragraph breaks
+        .replace(/\n- /g, '<br>&bull; ') // bullet points
+        .replace(/\n\d+\. /g, m => '<br>' + m.trim()) // numbered list
+        .replace(/\n/g, '<br>'); // line breaks
+    return html;
+}
+
+function showStoryActions() {
+    focusGroupBtn.style.display = 'inline-block';
+    copyStoryBtn.style.display = 'inline-block';
+    runChainBtn.style.display = 'inline-block';
+}
+function hideStoryActions() {
+    focusGroupBtn.style.display = 'none';
+    copyStoryBtn.style.display = 'none';
+    runChainBtn.style.display = 'none';
+}
+
 generateBtn.onclick = async () => {
     const prompt = promptInput.value.trim();
     if (!prompt) return;
@@ -71,12 +110,60 @@ generateBtn.onclick = async () => {
     setLoadingBg(false);
     const data = await res.json();
     currentStory = data.story;
-    storyDiv.textContent = currentStory;
+    storyDiv.innerHTML = renderStoryMarkdownToHtml(currentStory);
     storySection.style.display = 'block';
-    focusGroupBtn.style.display = 'inline-block';
-    copyStoryBtn.style.display = 'inline-block';
+    showStoryActions();
     feedbackSection.style.display = 'none';
     generateBtn.disabled = false;
+    hideProducerNotesField();
+};
+
+// Run Chain: focus group + auto-enhance
+runChainBtn.onclick = async () => {
+    runChainBtn.disabled = true;
+    setLoadingBg(true);
+    const { provider, model } = getProviderAndModel();
+    // Step 1: Focus group
+    const res1 = await fetch('/focus-group', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ story: currentStory, provider, model })
+    });
+    let data1;
+    try {
+        data1 = await res1.json();
+    } catch (e) {
+        feedbackDiv.innerHTML = '<span class="text-red-500">Error: Unable to parse feedback. Please check server logs.</span>';
+        feedbackSection.style.display = 'block';
+        runChainBtn.disabled = false;
+        setLoadingBg(false);
+        return;
+    }
+    currentFeedback = data1.feedback;
+    feedbackDiv.innerHTML = renderMarkdownToHtml(currentFeedback);
+    feedbackSection.style.display = 'block';
+    // Step 2: Enhance (auto, no producer notes)
+    const res2 = await fetch('/enhance-story', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ story: currentStory, feedback: currentFeedback, producerNotes: '', provider, model })
+    });
+    setLoadingBg(false);
+    let data2;
+    try {
+        data2 = await res2.json();
+    } catch (e) {
+        storyDiv.innerHTML = '<span class="text-red-500">Error: Unable to parse new story. Please check server logs.</span>';
+        showStoryActions();
+        runChainBtn.disabled = false;
+        hideProducerNotesField();
+        return;
+    }
+    currentStory = data2.newDraft;
+    storyDiv.innerHTML = renderStoryMarkdownToHtml(currentStory);
+    feedbackSection.style.display = 'none';
+    showStoryActions();
+    runChainBtn.disabled = false;
     hideProducerNotesField();
 };
 
@@ -90,9 +177,18 @@ focusGroupBtn.onclick = async () => {
         body: JSON.stringify({ story: currentStory, provider, model })
     });
     setLoadingBg(false);
-    const data = await res.json();
+    let data;
+    try {
+        data = await res.json();
+    } catch (e) {
+        feedbackDiv.innerHTML = '<span class="text-red-500">Error: Unable to parse feedback. Please check server logs.</span>';
+        feedbackSection.style.display = 'block';
+        enhanceBtn.style.display = 'none';
+        focusGroupBtn.disabled = false;
+        return;
+    }
     currentFeedback = data.feedback;
-    feedbackDiv.textContent = currentFeedback;
+    feedbackDiv.innerHTML = renderMarkdownToHtml(currentFeedback);
     feedbackSection.style.display = 'block';
     enhanceBtn.style.display = 'inline-block';
     focusGroupBtn.disabled = false;
@@ -112,10 +208,9 @@ enhanceBtn.onclick = async () => {
     setLoadingBg(false);
     const data = await res.json();
     currentStory = data.newDraft;
-    storyDiv.textContent = currentStory;
+    storyDiv.innerHTML = renderStoryMarkdownToHtml(currentStory);
     feedbackSection.style.display = 'none';
-    focusGroupBtn.style.display = 'inline-block';
-    copyStoryBtn.style.display = 'inline-block';
+    showStoryActions();
     enhanceBtn.disabled = false;
     hideProducerNotesField();
 };
