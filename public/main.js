@@ -8,6 +8,8 @@ const feedbackDiv = document.getElementById('feedback');
 const enhanceBtn = document.getElementById('enhanceBtn');
 const copyStoryBtn = document.getElementById('copyStoryBtn');
 const runChainBtn = document.getElementById('runChainBtn');
+const runChain5Btn = document.getElementById('runChain5Btn');
+const runChain10Btn = document.getElementById('runChain10Btn');
 const body = document.getElementById('main-body');
 const defaultBg = body.className;
 const loadingBg = 'bg-yellow-200 dark:bg-yellow-900 min-h-screen flex flex-col items-center py-12';
@@ -15,6 +17,7 @@ const aiProviderSelect = document.getElementById('ai-provider');
 const openaiModelInput = document.getElementById('openai-model');
 const producerNotesInput = document.getElementById('producer-notes');
 const producerNotesLabel = document.getElementById('producer-notes-label');
+const producerNotesOnlyCheckbox = document.getElementById('producer-notes-only');
 
 aiProviderSelect.onchange = function() {
     if (aiProviderSelect.value === 'openai') {
@@ -89,11 +92,15 @@ function showStoryActions() {
     focusGroupBtn.style.display = 'inline-block';
     copyStoryBtn.style.display = 'inline-block';
     runChainBtn.style.display = 'inline-block';
+    runChain5Btn.style.display = 'inline-block';
+    runChain10Btn.style.display = 'inline-block';
 }
 function hideStoryActions() {
     focusGroupBtn.style.display = 'none';
     copyStoryBtn.style.display = 'none';
     runChainBtn.style.display = 'none';
+    runChain5Btn.style.display = 'none';
+    runChain10Btn.style.display = 'none';
 }
 
 generateBtn.onclick = async () => {
@@ -167,6 +174,78 @@ runChainBtn.onclick = async () => {
     hideProducerNotesField();
 };
 
+async function runChainNTimes(n) {
+    runChainBtn.disabled = true;
+    runChain5Btn.disabled = true;
+    runChain10Btn.disabled = true;
+    setLoadingBg(true);
+    let lastStory = currentStory;
+    let lastFeedback = currentFeedback;
+    const { provider, model } = getProviderAndModel();
+    for (let i = 0; i < n; i++) {
+        // Step 1: Focus group
+        const res1 = await fetch('/focus-group', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ story: lastStory, provider, model })
+        });
+        let data1;
+        try {
+            data1 = await res1.json();
+        } catch (e) {
+            feedbackDiv.innerHTML = '<span class="text-red-500">Error: Unable to parse feedback. Please check server logs.</span>';
+            feedbackSection.style.display = 'block';
+            setLoadingBg(false);
+            runChainBtn.disabled = false;
+            runChain5Btn.disabled = false;
+            runChain10Btn.disabled = false;
+            return;
+        }
+        lastFeedback = data1.feedback;
+        feedbackDiv.innerHTML = renderMarkdownToHtml(lastFeedback);
+        feedbackSection.style.display = 'block';
+        // Step 2: Enhance (auto, no producer notes)
+        const res2 = await fetch('/enhance-story', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ story: lastStory, feedback: lastFeedback, producerNotes: '', provider, model })
+        });
+        let data2;
+        try {
+            data2 = await res2.json();
+        } catch (e) {
+            storyDiv.innerHTML = '<span class="text-red-500">Error: Unable to parse new story. Please check server logs.</span>';
+            showStoryActions();
+            runChainBtn.disabled = false;
+            runChain5Btn.disabled = false;
+            runChain10Btn.disabled = false;
+            hideProducerNotesField();
+            setLoadingBg(false);
+            return;
+        }
+        lastStory = data2.newDraft;
+        storyDiv.innerHTML = renderStoryMarkdownToHtml(lastStory);
+        await new Promise(r => setTimeout(r, 300)); // Small pause for UI responsiveness
+    }
+    currentStory = lastStory;
+    currentFeedback = lastFeedback;
+    feedbackSection.style.display = 'none';
+    showStoryActions();
+    runChainBtn.disabled = false;
+    runChain5Btn.disabled = false;
+    runChain10Btn.disabled = false;
+    hideProducerNotesField();
+    setLoadingBg(false);
+}
+
+runChain5Btn.onclick = async () => {
+    await runChainNTimes(5);
+};
+
+runChain10Btn.onclick = async () => {
+    await runChainNTimes(10);
+};
+
 focusGroupBtn.onclick = async () => {
     focusGroupBtn.disabled = true;
     setLoadingBg(true);
@@ -200,13 +279,24 @@ enhanceBtn.onclick = async () => {
     setLoadingBg(true);
     const { provider, model } = getProviderAndModel();
     const producerNotes = producerNotesInput.value.trim();
+    // If the checkbox is checked, ignore focus group feedback
+    const feedbackToSend = producerNotesOnlyCheckbox.checked ? '' : currentFeedback;
     const res = await fetch('/enhance-story', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ story: currentStory, feedback: currentFeedback, producerNotes, provider, model })
+        body: JSON.stringify({ story: currentStory, feedback: feedbackToSend, producerNotes, provider, model })
     });
     setLoadingBg(false);
-    const data = await res.json();
+    let data;
+    try {
+        data = await res.json();
+    } catch (e) {
+        storyDiv.innerHTML = '<span class="text-red-500">Error: Unable to parse new story. Please check server logs.</span>';
+        showStoryActions();
+        enhanceBtn.disabled = false;
+        hideProducerNotesField();
+        return;
+    }
     currentStory = data.newDraft;
     storyDiv.innerHTML = renderStoryMarkdownToHtml(currentStory);
     feedbackSection.style.display = 'none';
