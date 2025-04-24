@@ -6,6 +6,12 @@ require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
 
+// Import prompt templates
+const generateStoryPrompt = require('./prompts/generateStoryPrompt');
+const enhanceStoryPrompt = require('./prompts/enhanceStoryPrompt');
+const focusGroupPrompt = require('./prompts/focusGroupPrompt');
+const systemMessages = require('./prompts/systemMessages');
+
 const app = express();
 const API_URL = process.env.API_URL || 'http://localhost:11434/api/generate';
 const MODEL_NAME = process.env.MODEL_NAME || 'llama3.1:latest';
@@ -41,7 +47,7 @@ const streamOllamaStory = async (payload) => {
     });
 };
 
-async function streamOpenAIStory({ prompt, model }) {
+async function streamOpenAIStory({ prompt, model, systemType = 'storyWriter' }) {
     const apiKey = OPENAI_API_KEY;
     const modelName = model && model.length > 0 ? model : OPENAI_MODEL;
     const url = 'https://api.openai.com/v1/chat/completions';
@@ -52,7 +58,7 @@ async function streamOpenAIStory({ prompt, model }) {
     const data = {
         model: modelName,
         messages: [
-            { role: 'system', content: 'You are a creative story writer.' },
+            { role: 'system', content: systemMessages[systemType] || '' },
             { role: 'user', content: prompt }
         ],
         temperature: 0.8,
@@ -98,12 +104,13 @@ app.post('/generate-story', async (req, res) => {
         currentLogPath = getNewLogFilename();
         fs.writeFileSync(currentLogPath, '# Story Generation Log\n\n', 'utf8');
         let story;
+        const promptText = generateStoryPrompt({ prompt, producerNotes });
         if (provider === 'openai') {
-            story = await streamOpenAIStory({ prompt: `Write a creative story based on: ${prompt}${producerNotes ? '\nProducer notes: ' + producerNotes : ''}`, model });
+            story = await streamOpenAIStory({ prompt: promptText, model, systemType: 'storyWriter' });
         } else {
             story = await streamOllamaStory({
                 model: model && model.length > 0 ? model : MODEL_NAME,
-                prompt: `Write a creative story based on: ${prompt}${producerNotes ? '\nProducer notes: ' + producerNotes : ''}`
+                prompt: promptText
             });
         }
         logStoryRevision('Original Story', prompt, story, null, currentLogPath, producerNotes);
@@ -118,15 +125,13 @@ app.post('/focus-group', async (req, res) => {
     const { story, provider, model } = req.body;
     try {
         let feedback;
+        const promptText = focusGroupPrompt({ story });
         if (provider === 'openai') {
-            feedback = await streamOpenAIStory({
-                prompt: `You are a focus group. Give constructive feedback on this story, and at the end, provide a single line rating in the format: 'RATING: x/10 stars'. Example: RATING: 7/10 stars.\nStory: ${story}`,
-                model
-            });
+            feedback = await streamOpenAIStory({ prompt: promptText, model, systemType: 'focusGroup' });
         } else {
             feedback = await streamOllamaStory({
                 model: model && model.length > 0 ? model : MODEL_NAME,
-                prompt: `You are a focus group. Give constructive feedback on this story, and at the end, provide a single line rating in the format: 'RATING: x/10 stars'. Example: RATING: 7/10 stars.\nStory: ${story}`
+                prompt: promptText
             });
         }
         res.json({ feedback });
@@ -140,15 +145,13 @@ app.post('/enhance-story', async (req, res) => {
     const { story, feedback, producerNotes, provider, model } = req.body;
     try {
         let newDraft;
+        const promptText = enhanceStoryPrompt({ story, feedback, producerNotes });
         if (provider === 'openai') {
-            newDraft = await streamOpenAIStory({
-                prompt: `You are a writer. Here is your story: ${story}\nFocus group feedback: ${feedback}${producerNotes ? '\nProducer notes: ' + producerNotes : ''}\nRevise and enhance the story accordingly.`,
-                model
-            });
+            newDraft = await streamOpenAIStory({ prompt: promptText, model, systemType: 'enhancer' });
         } else {
             newDraft = await streamOllamaStory({
                 model: model && model.length > 0 ? model : MODEL_NAME,
-                prompt: `You are a writer. Here is your story: ${story}\nFocus group feedback: ${feedback}${producerNotes ? '\nProducer notes: ' + producerNotes : ''}\nRevise and enhance the story accordingly.`
+                prompt: promptText
             });
         }
         logStoryRevision('Revision', null, newDraft, feedback, currentLogPath, producerNotes);
