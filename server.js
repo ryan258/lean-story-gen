@@ -62,7 +62,7 @@ async function streamOpenAIStory({ prompt, model }) {
     return response.data.choices[0].message.content;
 }
 
-function logStoryRevision(type, prompt, content, feedback = null, customLogPath = null) {
+function logStoryRevision(type, prompt, content, feedback = null, customLogPath = null, producerNotes = null) {
     const timestamp = new Date().toLocaleString();
     let entry = `\n---\n`;
     if (type === 'Original Story') {
@@ -72,6 +72,7 @@ function logStoryRevision(type, prompt, content, feedback = null, customLogPath 
         entry += `\n### ${type} (${timestamp})\n`;
     }
     if (prompt) entry += `**Prompt:** ${prompt}\n\n`;
+    if (producerNotes) entry += `**Producer Notes:**\n${producerNotes}\n\n`;
     if (type === 'Revision' && feedback) entry += `**Focus Group Feedback:**\n${feedback}\n\n`;
     entry += `**Story Draft:**\n\n${content}\n`;
     fs.appendFileSync(customLogPath || LOG_PATH, entry, 'utf8');
@@ -92,20 +93,20 @@ let currentLogPath = LOG_PATH;
 
 // AI story generator via Ollama
 app.post('/generate-story', async (req, res) => {
-    const { prompt, provider, model } = req.body;
+    const { prompt, producerNotes, provider, model } = req.body;
     try {
         currentLogPath = getNewLogFilename();
         fs.writeFileSync(currentLogPath, '# Story Generation Log\n\n', 'utf8');
         let story;
         if (provider === 'openai') {
-            story = await streamOpenAIStory({ prompt: `Write a creative story based on: ${prompt}`, model });
+            story = await streamOpenAIStory({ prompt: `Write a creative story based on: ${prompt}${producerNotes ? '\nProducer notes: ' + producerNotes : ''}`, model });
         } else {
             story = await streamOllamaStory({
                 model: model && model.length > 0 ? model : MODEL_NAME,
-                prompt: `Write a creative story based on: ${prompt}`
+                prompt: `Write a creative story based on: ${prompt}${producerNotes ? '\nProducer notes: ' + producerNotes : ''}`
             });
         }
-        logStoryRevision('Original Story', prompt, story, null, currentLogPath);
+        logStoryRevision('Original Story', prompt, story, null, currentLogPath, producerNotes);
         res.json({ story });
     } catch (err) {
         res.status(500).json({ error: 'Failed to generate story', details: err.message });
@@ -119,13 +120,13 @@ app.post('/focus-group', async (req, res) => {
         let feedback;
         if (provider === 'openai') {
             feedback = await streamOpenAIStory({
-                prompt: `You are a focus group. Give constructive feedback on this story: ${story}`,
+                prompt: `You are a focus group. Give constructive feedback on this story, and at the end, provide a single line rating in the format: 'RATING: x/10 stars'. Example: RATING: 7/10 stars.\nStory: ${story}`,
                 model
             });
         } else {
             feedback = await streamOllamaStory({
                 model: model && model.length > 0 ? model : MODEL_NAME,
-                prompt: `You are a focus group. Give constructive feedback on this story: ${story}`
+                prompt: `You are a focus group. Give constructive feedback on this story, and at the end, provide a single line rating in the format: 'RATING: x/10 stars'. Example: RATING: 7/10 stars.\nStory: ${story}`
             });
         }
         res.json({ feedback });
@@ -136,21 +137,21 @@ app.post('/focus-group', async (req, res) => {
 
 // Enhancement via Ollama
 app.post('/enhance-story', async (req, res) => {
-    const { story, feedback, provider, model } = req.body;
+    const { story, feedback, producerNotes, provider, model } = req.body;
     try {
         let newDraft;
         if (provider === 'openai') {
             newDraft = await streamOpenAIStory({
-                prompt: `You are a writer. Here is your story: ${story}\nFocus group feedback: ${feedback}\nRevise and enhance the story accordingly.`,
+                prompt: `You are a writer. Here is your story: ${story}\nFocus group feedback: ${feedback}${producerNotes ? '\nProducer notes: ' + producerNotes : ''}\nRevise and enhance the story accordingly.`,
                 model
             });
         } else {
             newDraft = await streamOllamaStory({
                 model: model && model.length > 0 ? model : MODEL_NAME,
-                prompt: `You are a writer. Here is your story: ${story}\nFocus group feedback: ${feedback}\nRevise and enhance the story accordingly.`
+                prompt: `You are a writer. Here is your story: ${story}\nFocus group feedback: ${feedback}${producerNotes ? '\nProducer notes: ' + producerNotes : ''}\nRevise and enhance the story accordingly.`
             });
         }
-        logStoryRevision('Revision', null, newDraft, feedback, currentLogPath);
+        logStoryRevision('Revision', null, newDraft, feedback, currentLogPath, producerNotes);
         res.json({ newDraft });
     } catch (err) {
         res.status(500).json({ error: 'Failed to enhance story', details: err.message });

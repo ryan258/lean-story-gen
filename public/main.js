@@ -12,6 +12,8 @@ const defaultBg = body.className;
 const loadingBg = 'bg-yellow-200 dark:bg-yellow-900 min-h-screen flex flex-col items-center py-12';
 const aiProviderSelect = document.getElementById('ai-provider');
 const openaiModelInput = document.getElementById('openai-model');
+const producerNotesInput = document.getElementById('producer-notes');
+const producerNotesLabel = document.getElementById('producer-notes-label');
 
 aiProviderSelect.onchange = function() {
     if (aiProviderSelect.value === 'openai') {
@@ -41,6 +43,20 @@ function getProviderAndModel() {
 let currentStory = '';
 let currentFeedback = '';
 
+// Hide producer notes on page load
+producerNotesLabel.style.display = 'none';
+producerNotesInput.style.display = 'none';
+
+function showProducerNotesField() {
+    producerNotesLabel.style.display = '';
+    producerNotesInput.style.display = '';
+}
+function hideProducerNotesField() {
+    producerNotesLabel.style.display = 'none';
+    producerNotesInput.style.display = 'none';
+    producerNotesInput.value = '';
+}
+
 generateBtn.onclick = async () => {
     const prompt = promptInput.value.trim();
     if (!prompt) return;
@@ -61,6 +77,7 @@ generateBtn.onclick = async () => {
     copyStoryBtn.style.display = 'inline-block';
     feedbackSection.style.display = 'none';
     generateBtn.disabled = false;
+    hideProducerNotesField();
 };
 
 focusGroupBtn.onclick = async () => {
@@ -79,16 +96,18 @@ focusGroupBtn.onclick = async () => {
     feedbackSection.style.display = 'block';
     enhanceBtn.style.display = 'inline-block';
     focusGroupBtn.disabled = false;
+    showProducerNotesField();
 };
 
 enhanceBtn.onclick = async () => {
     enhanceBtn.disabled = true;
     setLoadingBg(true);
     const { provider, model } = getProviderAndModel();
+    const producerNotes = producerNotesInput.value.trim();
     const res = await fetch('/enhance-story', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ story: currentStory, feedback: currentFeedback, provider, model })
+        body: JSON.stringify({ story: currentStory, feedback: currentFeedback, producerNotes, provider, model })
     });
     setLoadingBg(false);
     const data = await res.json();
@@ -98,6 +117,7 @@ enhanceBtn.onclick = async () => {
     focusGroupBtn.style.display = 'inline-block';
     copyStoryBtn.style.display = 'inline-block';
     enhanceBtn.disabled = false;
+    hideProducerNotesField();
 };
 
 copyStoryBtn.onclick = async () => {
